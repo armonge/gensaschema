@@ -96,6 +96,11 @@ class Type(object):
         # pylint: disable = too-many-branches, too-many-statements
 
         unset = object()
+        if (
+            self._ctype.__class__.__name__ == "ENUM"
+            and self._dialect == 'postgresql'
+        ):
+            return 'enum_%s' % self._ctype.name
 
         try:
             try:

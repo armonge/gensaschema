@@ -28,8 +28,6 @@ Schema module generation code.
 """
 __author__ = u"Andr\xe9 Malo"
 
-import functools as _ft
-
 from . import _meta
 from . import _table
 from . import _template
@@ -119,13 +117,14 @@ class Schema(object):
             will always fail on unknown types.
         """
         metadata = _meta.BoundMetaData(conn)
-        self._dialect = metadata.bind.dialect.name
-        _reflect_enums(metadata, symbols)
+        symbols.types.defines.extend(_reflect_pg_enums(metadata))
+
         self._tables = _table.TableCollection.by_names(
             metadata, tables, schemas, symbols, types=types
         )
-        self._schemas = schemas
+        self._dialect = metadata.bind.dialect.name
         self._symbols = symbols
+        self._schemas = schemas
         self._dbname = dbname
 
     def dump(self, fp):
@@ -177,9 +176,9 @@ class Schema(object):
         fp.write('\n')
 
 
-def _reflect_enums(metadata, symbols):
+def _reflect_pg_enums(metadata):
     """
-    Add definers for enums, and add factory to ischema_names
+    Add definers for postgresql enums
 
     :Parameters:
       `metadata` : ``MetaData``
@@ -188,39 +187,17 @@ def _reflect_enums(metadata, symbols):
       `symbols` : ``Symbols``
         Symbol table
     """
-    enums = dict((
-        "%s.%s" % (rec['schema'], rec['name'])
-        if not rec['visible'] else rec['name'], rec
-    ) for rec in metadata.bind.dialect._load_enums(metadata.bind, schema='*'))
+    if metadata.bind.dialect.name != "postgresql":
+        return
 
-    seen = set()
+    from sqlalchemy.dialects import postgresql as t
 
-    def factory(*args, **kwargs):
-        """
-        Make the enum and add a definer for it
-        """
-        from sqlalchemy.dialects import postgresql as t
-        ctype = t.ENUM(*args, **kwargs)
-        if ctype.name not in seen:
-            symbols.types.instance_repr[ctype] = lambda *_: ctype.name
-            symbols.types.defines.append(_definer(ctype))
-            seen.add(ctype.name)
-        return ctype
-
-    for name, enum in enums.items():
-        metadata.bind.dialect.ischema_names[name.lower()] = _ft.partial(
-            factory, *enum['labels'], name=enum['name'],
-            schema=enum['schema'] if not enum['visible'] else None
+    for enum in metadata.bind.dialect._load_enums(metadata.bind):
+        ctype = t.ENUM(
+            *enum["labels"],
+            name=enum["name"],
+            schema=enum["schema"] if not enum["visible"] else None
         )
-
-
-def _definer(column_type):
-    """ Create schema definer """
-    # pylint: disable = protected-access
-
-    def definer(_, symbols):
-        """ Define type """
-        return [
-            '%s = %s.%r' % (column_type.name, symbols['type'], column_type)
+        yield lambda _, symbols: [
+            "enum_%s = %s.%r" % (ctype.name, symbols["type"], ctype)
         ]
-    return definer
