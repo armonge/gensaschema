@@ -117,7 +117,7 @@ class Type(object):
         mod = self._symbols.types.resolve(self._ctype, self._dialect)
         params = []
 
-        if _have_signature:  # pragma: no cover
+        if _have_signature:
             try:
                 # pylint: disable = no-member
                 sign = _inspect.signature(self._ctype.__init__)
@@ -166,7 +166,7 @@ class Type(object):
                             )
                         )
 
-        else:  # pragma: no cover
+        else:
             try:
                 # pylint: disable = deprecated-method
                 # pylint: disable = no-member
