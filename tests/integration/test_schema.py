@@ -1,4 +1,5 @@
 # -*- coding: ascii -*-
+# pylint: disable = line-too-long
 u"""
 :Copyright:
 
@@ -19,13 +20,13 @@ u"""
  See the License for the specific language governing permissions and
  limitations under the License.
 
-==============================
- Tests for gensaschema._table
-==============================
+=========================
+ Schema generation tests
+=========================
 
-Tests for gensaschema._table
+Schema generation tests
 """
-__author__ = u"Andr\xe9 Malo"
+__author__ = u"Andr\xe9 Malo, Andr\xe9s Reyes Monge"
 
 import os as _os
 import sys as _sys
@@ -244,11 +245,11 @@ del _sa, T, C, D, m
         exec("exec result in glob, loc")
 
 
-def test_postgresql_schema_with_enums(docker_postgres_string, tmpdir):
+def test_postgresql_schema_with_enums(postgres_url, tmpdir):
     _warnings.simplefilter("error", _sa.exc.SAWarning)
 
     tmpdir = str(tmpdir)
-    db = _sa.create_engine(docker_postgres_string).connect()
+    db = _sa.create_engine(postgres_url).connect()
     try:
         run = runner(db)
         run(
@@ -428,8 +429,5 @@ del _sa, T, C, D, m
         + "\n"
     )
     if bytes is not str:
-        expected = expected.replace(" u'", " '")
-        expected = expected.replace("(u'", "('")
-        expected = expected.replace('(u"', '("')
-        expected = expected.replace("=u'", "='")
+        expected = expected.replace("u'", "'").replace('u"', '"')
     assert result == expected

@@ -117,14 +117,12 @@ class Schema(object):
             will always fail on unknown types.
         """
         metadata = _meta.BoundMetaData(conn)
-        symbols.types.defines.extend(_reflect_pg_enums(metadata))
-
+        self._dialect = metadata.bind.dialect.name
         self._tables = _table.TableCollection.by_names(
             metadata, tables, schemas, symbols, types=types
         )
-        self._dialect = metadata.bind.dialect.name
-        self._symbols = symbols
         self._schemas = schemas
+        self._symbols = symbols
         self._dbname = dbname
 
     def dump(self, fp):
@@ -135,69 +133,44 @@ class Schema(object):
           fp (file):
             File to write to
         """
-        imports = [item % self._symbols for item in self._symbols.imports]
-        if imports:  # pragma: no branch
-            imports.sort()
-            imports.append('')
-        lines = []
-
-        defines = self._symbols.types.defines
-        if defines:
-            defined = []
-            for define in defines:
-                defined.extend(define(self._dialect, self._symbols))
-            if defined:
-                lines.append('')
-                lines.append('# Custom type definitions')
-                lines.extend(defined)
-                lines.append('')
-
+        lines, dlines = [], []
         for table in self._tables:
             if table.is_reference:
                 continue
-            if not lines:
-                lines.append('')
             name = table.sa_table.name.encode('ascii', 'backslashescape')
-            if bytes is not str:  # pragma: no cover
+            if bytes is not str:
                 name = name.decode('ascii')
             lines.append('# Table "%s"' % (name,))
             lines.append('%s = %r' % (table.varname, table))
             lines.append('')
             lines.append('')
 
+        imports = [item % self._symbols for item in self._symbols.imports]
+        if imports:  # pragma: no branch
+            imports.sort()
+            imports.append('')
+
+        defines = self._symbols.types.defines
+        if defines:
+            defined = []
+            seen = set()
+            for define in defines:
+                for item in define(self._dialect, self._symbols):
+                    if item not in seen:
+                        defined.append(item)
+                        seen.add(item)
+            if defined:
+                dlines = ['', '# Custom type definitions'] + defined
+
+        if lines:
+            dlines.append('')
+
         param = dict(
             ((str(key), value) for key, value in self._symbols),
             dbspec=" for %s" % self._dbname if self._dbname else "",
             dialect=self._dialect,
             imports='\n'.join(imports),
-            lines='\n'.join(lines),
+            lines='\n'.join(dlines + lines),
         )
         fp.write(self._MODULE_TPL.expand(**param))
         fp.write('\n')
-
-
-def _reflect_pg_enums(metadata):
-    """
-    Add definers for postgresql enums
-
-    :Parameters:
-      `metadata` : ``MetaData``
-        SQLAlchemy MetaData
-
-      `symbols` : ``Symbols``
-        Symbol table
-    """
-    if metadata.bind.dialect.name != "postgresql":
-        return
-
-    from sqlalchemy.dialects import postgresql as t
-
-    for enum in metadata.bind.dialect._load_enums(metadata.bind):
-        ctype = t.ENUM(
-            *enum["labels"],
-            name=enum["name"],
-            schema=enum["schema"] if not enum["visible"] else None
-        )
-        yield lambda _, symbols: [
-            "enum_%s = %s.%r" % (ctype.name, symbols["type"], ctype)
-        ]
